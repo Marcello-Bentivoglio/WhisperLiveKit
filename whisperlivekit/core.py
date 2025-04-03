@@ -170,9 +170,9 @@ class WhisperLiveKit:
             self.asr, self.tokenizer, self.language = backend_factory(self.args)
             # print(self.asr.model.supported_languages)
             warmup_asr(self.asr, self.args.warmup_file)
-            audio = librosa.load("/var/folders/rs/sncb4kp96t51ccg1st7bfx3r0000gn/T/whisper_warmup_jfk.wav", sr=16000)[0] # Uncomment this line in MacOS
+            # audio = librosa.load("/var/folders/rs/sncb4kp96t51ccg1st7bfx3r0000gn/T/whisper_warmup_jfk.wav", sr=16000)[0] # Uncomment this line in MacOS
             # audio = librosa.load("/home/ecuser/tests/infer_cli_basic.wav", sr=16000)[0]
-            # audio = librosa.load("/tmp/whisper_warmup_jfk.wav", sr=16000)[0] # Uncomment this line in LINUX
+            audio = librosa.load("/tmp/whisper_warmup_jfk.wav", sr=16000)[0] # Uncomment this line in LINUX
             # transcription, info = self.asr.transcribe(audio)
             transcription, language_transcribe = self.asr.transcribe(audio)
             
