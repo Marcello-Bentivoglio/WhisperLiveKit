@@ -12,9 +12,9 @@ from whisperlivekit.whisper_streaming_custom.whisper_online import online_factor
 from whisperlivekit.core import WhisperLiveKit
 
 # Set up logging once
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.ERROR)
 
 def format_time(seconds: float) -> str:
     """Format seconds as HH:MM:SS."""
@@ -32,6 +32,8 @@ class AudioProcessor:
         models = WhisperLiveKit()
         
         # Audio processing settings
+        self.language = models.language
+        self.language_detected = None
         self.args = models.args
         self.sample_rate = 16000
         self.channels = 1
@@ -87,7 +89,7 @@ class AudioProcessor:
             self.ffmpeg_process = self.start_ffmpeg_decoder()
             self.pcm_buffer = bytearray()
 
-    async def update_transcription(self, new_tokens, buffer, end_buffer, full_transcription, sep):
+    async def update_transcription(self, new_tokens, buffer, end_buffer, full_transcription, sep, language: str):
         """Thread-safe update of transcription with new data."""
         async with self.lock:
             self.tokens.extend(new_tokens)
@@ -95,6 +97,7 @@ class AudioProcessor:
             self.end_buffer = end_buffer
             self.full_transcription = full_transcription
             self.sep = sep
+            self.language_detected = language
             
     async def update_diarization(self, end_attributed_speaker, buffer_diarization=""):
         """Thread-safe update of diarization with new data."""
@@ -135,7 +138,8 @@ class AudioProcessor:
                 "end_attributed_speaker": self.end_attributed_speaker,
                 "sep": self.sep,
                 "remaining_time_transcription": remaining_transcription,
-                "remaining_time_diarization": remaining_diarization
+                "remaining_time_diarization": remaining_diarization,
+                "language_detected": self.language_detected
             }
             
     async def reset(self):
@@ -221,13 +225,14 @@ class AudioProcessor:
                 
                 # Process transcription
                 self.online.insert_audio_chunk(pcm_array)
-                new_tokens = self.online.process_iter()
+                new_tokens, language_detected = self.online.process_iter()
                 
                 if new_tokens:
                     self.full_transcription += self.sep.join([t.text for t in new_tokens])
                     
                 # Get buffer information
-                _buffer = self.online.get_buffer()
+                _buffer = self.online.get_buffer(language_detected)
+                
                 buffer = _buffer.text
                 end_buffer = _buffer.end if _buffer.end else (
                     new_tokens[-1].end if new_tokens else 0
@@ -238,7 +243,7 @@ class AudioProcessor:
                     buffer = ""
                     
                 await self.update_transcription(
-                    new_tokens, buffer, end_buffer, self.full_transcription, self.sep
+                    new_tokens, buffer, end_buffer, self.full_transcription, self.sep, language_detected
                 )
                 
             except Exception as e:
@@ -283,6 +288,7 @@ class AudioProcessor:
                 buffer_diarization = state["buffer_diarization"]
                 end_attributed_speaker = state["end_attributed_speaker"]
                 sep = state["sep"]
+                language_detected = state["language_detected"]
                 
                 # Add dummy tokens if needed
                 if (not tokens or tokens[-1].is_dummy) and not self.args.transcription and self.args.diarization:
@@ -316,6 +322,7 @@ class AudioProcessor:
                         lines.append({
                             "speaker": speaker,
                             "text": token.text,
+                            "language": language_detected,
                             "beg": format_time(token.start),
                             "end": format_time(token.end),
                             "diff": round(token.end - last_end_diarized, 2)
@@ -339,6 +346,7 @@ class AudioProcessor:
                     lines = [{
                         "speaker": 1,
                         "text": "",
+                        "language": "",
                         "beg": format_time(0),
                         "end": format_time(tokens[-1].end if tokens else 0),
                         "diff": 0
@@ -353,7 +361,7 @@ class AudioProcessor:
                 }
                 
                 # Only yield if content has changed
-                response_content = ' '.join([f"{line['speaker']} {line['text']}" for line in lines]) + \
+                response_content = ' '.join([f"{line['speaker']} {line['text']} {line['language']}" for line in lines]) + \
                                   f" | {buffer_transcription} | {buffer_diarization}"
                 
                 if response_content != self.last_response_content and (lines or buffer_transcription or buffer_diarization):
@@ -370,7 +378,7 @@ class AudioProcessor:
     async def create_tasks(self):
         """Create and start processing tasks."""
             
-        tasks = []    
+        tasks = []   
         if self.args.transcription and self.online:
             tasks.append(asyncio.create_task(self.transcription_processor()))
             
@@ -379,6 +387,7 @@ class AudioProcessor:
         
         tasks.append(asyncio.create_task(self.ffmpeg_stdout_reader()))
         self.tasks = tasks
+        print(self.tasks)
         
         return self.results_formatter()
         

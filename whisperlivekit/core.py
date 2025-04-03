@@ -4,6 +4,8 @@ except ImportError:
     from .whisper_streaming_custom.whisper_online import backend_factory, warmup_asr
 from argparse import Namespace, ArgumentParser
 
+import librosa
+
 def parse_args():
     parser = ArgumentParser(description="Whisper FastAPI Online Server")
     parser.add_argument(
@@ -162,10 +164,18 @@ class WhisperLiveKit:
         self.asr = None
         self.tokenizer = None
         self.diarization = None
+        self.language = None
         
         if self.args.transcription:
-            self.asr, self.tokenizer = backend_factory(self.args)
+            self.asr, self.tokenizer, self.language = backend_factory(self.args)
+            # print(self.asr.model.supported_languages)
             warmup_asr(self.asr, self.args.warmup_file)
+            audio = librosa.load("/var/folders/rs/sncb4kp96t51ccg1st7bfx3r0000gn/T/whisper_warmup_jfk.wav", sr=16000)[0] # Uncomment this line in MacOS
+            # audio = librosa.load("/home/ecuser/tests/infer_cli_basic.wav", sr=16000)[0]
+            # audio = librosa.load("/tmp/whisper_warmup_jfk.wav", sr=16000)[0] # Uncomment this line in LINUX
+            # transcription, info = self.asr.transcribe(audio)
+            transcription, language_transcribe = self.asr.transcribe(audio)
+            
 
         if self.args.diarization:
             from whisperlivekit.diarization.diarization_online import DiartDiarization
@@ -174,8 +184,9 @@ class WhisperLiveKit:
         WhisperLiveKit._initialized = True
 
     def web_interface(self):
-        import pkg_resources
-        html_path = pkg_resources.resource_filename('whisperlivekit', 'web/live_transcription.html')
+        import os
+        
+        html_path = os.path.join(os.getcwd(), "WhisperLiveKit/whisperlivekit/web/live_transcription.html")
         with open(html_path, "r", encoding="utf-8") as f:
             html = f.read()
         return html

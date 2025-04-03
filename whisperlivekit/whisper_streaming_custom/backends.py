@@ -109,14 +109,14 @@ class FasterWhisperASR(ASRBase):
         compute_type = "float16" if device == "cuda" else "float32"
 
         model = WhisperModel(
-            model_size_or_path,
+            "large-v3", #TODO: Mettere modello large
             device=device,
             compute_type=compute_type,
             download_root=cache_dir,
         )
         return model
 
-    def transcribe(self, audio: np.ndarray, init_prompt: str = "") -> list:
+    def transcribe(self, audio: np.ndarray, init_prompt: str = "") -> tuple[list, str]:
         segments, info = self.model.transcribe(
             audio,
             language=self.original_language,
@@ -126,15 +126,16 @@ class FasterWhisperASR(ASRBase):
             condition_on_previous_text=True,
             **self.transcribe_kargs,
         )
-        return list(segments)
+        
+        return list(segments), info.language
 
-    def ts_words(self, segments) -> List[ASRToken]:
+    def ts_words(self, segments, language: str = "en") -> List[ASRToken]:
         tokens = []
         for segment in segments:
             if segment.no_speech_prob > 0.9:
                 continue
             for word in segment.words:
-                token = ASRToken(word.start, word.end, word.word, probability=word.probability)
+                token = ASRToken(word.start, word.end, word.word, probability=word.probability, language=language)
                 tokens.append(token)
         return tokens
 

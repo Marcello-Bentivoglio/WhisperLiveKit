@@ -108,7 +108,7 @@ def backend_factory(args):
         tokenizer = create_tokenizer(tgt_language)
     else:
         tokenizer = None
-    return asr, tokenizer
+    return asr, tokenizer, tgt_language
 
 def online_factory(args, asr, tokenizer, logfile=sys.stderr):
     if args.vac:
@@ -134,9 +134,9 @@ def asr_factory(args, logfile=sys.stderr):
     """
     Creates and configures an ASR and ASR Online instance based on the specified backend and arguments.
     """
-    asr, tokenizer = backend_factory(args)
+    asr, tokenizer, language = backend_factory(args)
     online = online_factory(args, asr, tokenizer, logfile=logfile)
-    return asr, online
+    return asr, online, language
 
 def warmup_asr(asr, warmup_file=None, timeout=5):
     """

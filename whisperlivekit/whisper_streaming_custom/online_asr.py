@@ -172,14 +172,14 @@ class OnlineASRProcessor:
         context_text = self.asr.sep.join(token.text for token in non_prompt_tokens)
         return self.asr.sep.join(prompt_list[::-1]), context_text
 
-    def get_buffer(self):
+    def get_buffer(self, language: str = "en"):
         """
         Get the unvalidated buffer in string format.
         """
-        return self.concatenate_tokens(self.transcript_buffer.buffer)
+        return self.concatenate_tokens(self.transcript_buffer.buffer, language=language)
         
 
-    def process_iter(self) -> Transcript:
+    def process_iter(self) -> tuple[Transcript, str]:
         """
         Processes the current audio buffer.
 
@@ -189,14 +189,15 @@ class OnlineASRProcessor:
         logger.debug(
             f"Transcribing {len(self.audio_buffer)/self.SAMPLING_RATE:.2f} seconds from {self.buffer_time_offset:.2f}"
         )
-        res = self.asr.transcribe(self.audio_buffer, init_prompt=prompt_text)
-        tokens = self.asr.ts_words(res)  # Expecting List[ASRToken]
+        res, language_detected = self.asr.transcribe(self.audio_buffer, init_prompt=prompt_text)
+        tokens = self.asr.ts_words(res, language_detected)  # Expecting List[ASRToken]
         self.transcript_buffer.insert(tokens, self.buffer_time_offset)
         committed_tokens = self.transcript_buffer.flush()
+        
         self.committed.extend(committed_tokens)
-        completed = self.concatenate_tokens(committed_tokens)
+        completed = self.concatenate_tokens(committed_tokens, language=language_detected)
         logger.debug(f">>>> COMPLETE NOW: {completed.text}")
-        incomp = self.concatenate_tokens(self.transcript_buffer.buffer)
+        incomp = self.concatenate_tokens(self.transcript_buffer.buffer, language=language_detected)
         logger.debug(f"INCOMPLETE: {incomp.text}")
 
         if committed_tokens and self.buffer_trimming_way == "sentence":
@@ -210,7 +211,8 @@ class OnlineASRProcessor:
         logger.debug(
             f"Length of audio buffer now: {len(self.audio_buffer)/self.SAMPLING_RATE:.2f} seconds"
         )
-        return committed_tokens
+        
+        return committed_tokens, language_detected
 
     def chunk_completed_sentence(self):
         """
@@ -326,8 +328,9 @@ class OnlineASRProcessor:
     def concatenate_tokens(
         self,
         tokens: List[ASRToken],
+        language: str,
         sep: Optional[str] = None,
-        offset: float = 0
+        offset: float = 0,
     ) -> Transcript:
         sep = sep if sep is not None else self.asr.sep
         text = sep.join(token.text for token in tokens)
@@ -338,7 +341,7 @@ class OnlineASRProcessor:
         else:
             start = None
             end = None
-        return Transcript(start, end, text, probability=probability)
+        return Transcript(start, end, text, probability=probability, language=language)
 
 
 class VACOnlineASRProcessor:
